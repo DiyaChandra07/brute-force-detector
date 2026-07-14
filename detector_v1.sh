@@ -4,6 +4,18 @@
 declare -A fail_count
 whitelist="127.0.0.1"
 
+LOGFILE="$1"
+
+if [ -z "$LOGFILE" ]; then
+    echo "Usage: bash detector_v1.sh <logfile>"
+    exit 1
+fi
+
+if [ ! -f "$LOGFILE" ]; then
+    echo "Error: File '$LOGFILE' not found."
+    exit 1
+fi
+
 is_whitelisted() {
     local check_ip="$1"
     for safe_ip in $whitelist; do
@@ -15,7 +27,7 @@ is_whitelisted() {
 }
 
 
-ip_list=$(grep "Failed password" sample_auth.log | awk '{print $11}')
+ip_list=$(grep "Failed password" $LOGFILE | awk '{print $11}')
 
 for ip in $ip_list; do
 
@@ -26,7 +38,7 @@ done
 #counting successes
 declare -A success_ips
 
-success_list=$(grep "Accepted password" sample_auth.log | awk '{print $11}')
+success_list=$(grep "Accepted password" $LOGFILE | awk '{print $11}')
 
 for ip in $success_list; do
     success_ips["$ip"]=1
@@ -35,7 +47,7 @@ done
 #output line
 echo "=== Brute Force Detection Report ==="
 echo "Scan time: $(date)"
-echo "Log file: sample_auth.log"
+echo "Log file: $LOGFILE"
 echo ""
 
 echo "--- ALERTS ---"
