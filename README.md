@@ -1,8 +1,8 @@
 # Brute Force / Failed Login Detector
 
-A small bash script I built during my SOC internship to practice log analysis and detection logic.
+A bash script I built during my SOC internship to practice log analysis and brute-force detection logic.
 
-It reads an auth log file, counts failed login attempts per IP, and flags anything suspicious.
+It reads a login/auth log file, counts failed attempts per IP, and flags anything that looks suspicious — including a specific warning if an IP failed several times and then succeeded, since that's a stronger sign of an actual compromise than failures alone.
 
 ## Usage
 
@@ -10,7 +10,9 @@ It reads an auth log file, counts failed login attempts per IP, and flags anythi
 bash detector_v1.sh <logfile>
 ```
 
-To also save the output to a file:
+You'll be prompted for a destination/internal IP to ignore. This is useful when a log line contains both a source IP and a destination IP — press Enter to skip if it doesn't apply.
+
+To view the report and save it to a file at the same time:
 ```bash
 bash detector_v1.sh <logfile> | tee report.txt
 ```
@@ -20,26 +22,41 @@ Example:
 bash detector_v1.sh sample_auth.log
 ```
 
-## What it checks for
+## What it flags
 
-- Counts failed login attempts per IP
-- Flags an IP as **SUSPICIOUS** if it has more than 3 failed attempts
-- Flags an IP as **CRITICAL** if it failed several times and then had a successful login (possible compromise)
-- Whitelists `127.0.0.1` (localhost) so internal traffic isn't treated as an external threat
+| Label | Meaning |
+|---|---|
+| `[CRITICAL]` | IP failed 3+ times, then succeeded — possible compromise |
+| `[WARNING]` | IP failed more than 3 times, no success yet |
+| `[INFO]` | Normal activity, or a whitelisted source |
 
 ## Files
 
-- `detector_v1.sh` — the actual script
-- `generate_test_log.sh` — generates a fake test log to run the script against
-- `sample_auth.log` — example output from the generator
+| File | Purpose |
+|---|---|
+| `detector_v1.sh` | The detector script |
+| `generate_test_log.sh` | Generates a synthetic auth log to test against |
+| `sample_auth.log` | Sample output from the generator |
 
-## Notes
+## How it extracts IPs
 
-- Only tested on synthetic/fake data so far, not real company logs yet
-- Threshold for "too many fails" (3) is hardcoded right now
-- Only works with standard SSH auth.log format
-- Doesn't account for time windows yet (e.g. 5 fails in a minute vs 5 fails spread over a week look the same right now)
+Rather than assuming the IP always sits in a fixed position (e.g. "always the 11th word"), the script asks once at the start for a destination/internal IP to treat as constant. Then, for every line, it pulls out every IP-shaped value found on that line and skips any that match the destination IP — whatever's left is treated as the source IP. This makes it more adaptable across different log formats than hardcoding a field number, as long as each line has at most one source IP and one destination IP.
+
+It identifies failed vs. successful lines by searching for the words "fail" and "success" (case-insensitive). If a real log uses different wording — e.g. "denied" or "authenticated" — those keywords need to be updated at the top of the script.
+
+## Known limitations
+
+- Tested on synthetic data and one real sample so far — not yet validated against full production logs
+- The failure threshold (3) and the fail/success keywords are hardcoded, not configurable via flags yet
+- If a line has more than 2 IPs (i.e. more than one source or destination), the script just takes the first non-destination IP it finds — this may not always be correct for more complex formats
+- No time-window logic yet — 5 failures in one minute and 5 failures spread across a week are currently treated the same
 
 ## Why the whitelist exists
 
-While looking through some real web management logs earlier in this internship, I found a large number of failed login attempts all coming from `127.0.0.1` (localhost) — turned out to likely be an internal script with wrong credentials, not an actual attack. That's why this script treats localhost separately instead of flagging it the same as an external IP.
+While reviewing some real web management logs earlier in this internship, I found a large number of failed login attempts all coming from `127.0.0.1` (localhost). It turned out to likely be an internal script running with the wrong credentials, not an actual attack. That's the reasoning behind treating localhost as a separate, lower-priority category instead of flagging it the same as an external IP.
+
+## Next steps
+
+- Get real login logs from the team to test against production data
+- Make the threshold and fail/success keywords configurable instead of hardcoded
+- Add time-window logic so a burst of failures is treated differently than the same count spread over days
